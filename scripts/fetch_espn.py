@@ -46,6 +46,10 @@ def get(url: str) -> dict:
         try:
             with urllib.request.urlopen(req, timeout=30) as r:
                 return json.load(r)
+        except urllib.error.HTTPError as exc:
+            last = exc
+            if 400 <= exc.code < 500:
+                break
         except (urllib.error.URLError, TimeoutError, json.JSONDecodeError) as exc:
             last = exc
             time.sleep(1.5 * (attempt + 1))
@@ -107,7 +111,6 @@ def build(day: date, cfg: dict) -> dict:
 
     # 1) mecze dnia
     day_matches = []  # (league_cfg, slug, league_logo, event)
-    tables: dict[int, list] = {}
     for lg in cfg["leagues"]:
         slug = SLUGS.get(lg["id"])
         if not slug:
@@ -120,27 +123,22 @@ def build(day: date, cfg: dict) -> dict:
         print(f"{lg['name']}: {len(evs)} meczów", flush=True)
         for e in evs:
             day_matches.append((lg, slug, logo, e))
-        if evs:
-            # tabela ligowa: wszystkie mecze sezonu do dziś
-            try:
-                rng = get(f"{BASE}/{slug}/scoreboard?dates={season}0701-{day:%Y%m%d}&limit=1000")
-                games = []
-                for e in rng.get("events", []):
-                    try:
-                        pe = parse_event(e)
-                    except (KeyError, IndexError, ValueError):
-                        continue
-                    if pe["completed"]:
-                        games.append(pe)
-                tables[lg["id"]] = compute_table(games)
-                print(f"  tabela: {len(games)} zakończonych meczów, {len(tables[lg['id']])} drużyn", flush=True)
-            except RuntimeError as exc:
-                print(f"  błąd tabeli: {exc}", flush=True)
-                notes.append(f"Nie udało się pobrać tabeli ligi {lg['name']}.")
 
-    # 2) terminarze drużyn (bieżący i 2 poprzednie sezony, tylko liga)
+    # 2) terminarze drużyn (bieżący i 2 poprzednie sezony, tylko liga);
+    #    do tabeli ligowej potrzebny jest bieżący sezon wszystkich drużyn ligi
+    league_teams: dict[str, list[str]] = {}
+    for slug in sorted({slug for _, slug, _, _ in day_matches}):
+        try:
+            tj = get(f"{BASE}/{slug}/teams")
+            ids = [str(t["team"]["id"]) for t in tj["sports"][0]["leagues"][0]["teams"]]
+            league_teams[slug] = ids
+            print(f"  {slug}: {len(ids)} drużyn w lidze", flush=True)
+        except (RuntimeError, KeyError, IndexError) as exc:
+            print(f"  błąd listy drużyn {slug}: {exc}", flush=True)
     team_keys = sorted({(slug, e[side]["id"]) for _, slug, _, e in day_matches for side in ("home", "away")})
     jobs = [(slug, tid, s) for slug, tid in team_keys for s in (season, season - 1, season - 2)]
+    jobs += [(slug, tid, season) for slug, ids in league_teams.items() for tid in ids
+             if (slug, tid) not in set(team_keys)]
 
     def fetch_schedule(job):
         slug, tid, s = job
@@ -170,6 +168,23 @@ def build(day: date, cfg: dict) -> dict:
             if e["completed"]:
                 bucket[e["id"]] = e
     team_games = {k: sorted(v.values(), key=lambda e: -e["ts"]) for k, v in team_games.items()}
+
+    # tabela ligowa z wyników bieżącego sezonu wszystkich drużyn ligi
+    start_ts = datetime(season, 7, 1, tzinfo=tz).timestamp()
+    tables: dict[int, list] = {}
+    for lg, slug, _, _ in day_matches:
+        if lg["id"] in tables or slug not in league_teams:
+            continue
+        games = {}
+        for tid in league_teams[slug]:
+            for e in schedules.get((slug, tid, season), []):
+                if e["completed"] and e["ts"] >= start_ts:
+                    games[e["id"]] = e
+        tables[lg["id"]] = compute_table(list(games.values()))
+        print(f"  tabela {lg['name']}: {len(games)} meczów, {len(tables[lg['id']])} drużyn", flush=True)
+    for lg, slug, _, _ in day_matches:
+        if lg["id"] not in tables and f"Nie udało się pobrać tabeli ligi {lg['name']}." not in notes:
+            notes.append(f"Nie udało się pobrać tabeli ligi {lg['name']}.")
 
     # 3) które mecze potrzebują statystyk
     plan = []

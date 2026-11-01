@@ -9,6 +9,7 @@ const FINISHED = new Set(["FT", "AET", "PEN"]);
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
 const fmt1 = (v) => (v == null ? "–" : (Math.round(v * 10) / 10).toLocaleString("pl-PL"));
+const fmtAvg = (v) => (v == null ? "–" : v.toLocaleString("pl-PL", { minimumFractionDigits: 1, maximumFractionDigits: 1 }));
 const timeOf = (iso) => new Date(iso).toLocaleTimeString("pl-PL", { hour: "2-digit", minute: "2-digit" });
 const shortDate = (iso) => new Date(iso).toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit", year: "2-digit" });
 // Skrót do osi wykresu: "Manchester City" -> "MCI", "Arsenal" -> "ARS".
@@ -136,6 +137,7 @@ function details(m, data, lg) {
       html += compare(avg(h2h.map((x) => x.stats[k].home)), avg(h2h.map((x) => x.stats[k].away)), `średnio w ${h2h.length} H2H`);
       html += groupedChart(m, h2h, k, yMax);
     }
+    html += seasonTable(m, lg, st);
     html += `</div></div></details>`;
   }
   html += leagueTable(m, lg);
@@ -143,6 +145,54 @@ function details(m, data, lg) {
     <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 12.5l5-5 5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
   return html;
 }
+
+// Średnie danej statystyki wszystkich drużyn ligi: cały sezon i ostatnie 5 meczów (sortowalne).
+function seasonTable(m, lg, st) {
+  const rows = ((lg && lg.team_stats) || []).filter((r) => r.season[st.key] != null);
+  if (!rows.length) return "";
+  const k = st.key;
+  const sideOf = (r) => String(r.team.id) === String(m.home.id) ? "home"
+    : String(r.team.id) === String(m.away.id) ? "away" : "";
+  const sorted = rows.slice().sort((a, b) => (b.season[k] ?? -1) - (a.season[k] ?? -1));
+  const body = sorted.map((r, i) => {
+    const side = sideOf(r);
+    return `<tr class="${side ? "hl hl-" + side : ""}" data-name="${esc(r.team.name)}"
+        data-season="${r.season[k] ?? ""}" data-last="${r.last[k] ?? ""}">
+      <td class="n rk">${i + 1}</td><td class="tm">${esc(r.team.name)}</td>
+      <td class="n muted">${r.n}</td>
+      <td class="n v">${fmtAvg(r.season[k])}</td><td class="n v">${fmtAvg(r.last[k])}</td></tr>`;
+  }).join("");
+  const th = (key, label, cls = "n") =>
+    `<th class="${cls}"><button type="button" class="sort${key === "season" ? " on desc" : ""}" data-sort="${key}">${label}<span class="arr"></span></button></th>`;
+  return `<details class="sub mtable ltable sttable"><summary>Średnie wszystkich drużyn ligi
+      <svg class="chev" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 7.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
+    <div class="tbl-wrap"><table>
+      <thead><tr><th class="n">#</th>${th("name", "Drużyna", "")}<th class="n" title="mecze z danymi">M</th>
+        ${th("season", "Sezon")}${th("last", "Ost. 5")}</tr></thead>
+      <tbody>${body}</tbody></table>
+    <p class="tbl-note">Średnio na mecz w bieżącym sezonie ligowym. „Ost. 5” – średnia z 5 ostatnich meczów. Dotknij nagłówka, by sortować.</p></div></details>`;
+}
+
+// Sortowanie tabel średnich (delegacja zdarzeń).
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest?.(".sttable button.sort");
+  if (!btn) return;
+  const table = btn.closest("table");
+  const key = btn.dataset.sort;
+  const wasDesc = btn.classList.contains("on") && btn.classList.contains("desc");
+  const desc = btn.classList.contains("on") ? !wasDesc : key !== "name";
+  table.querySelectorAll("button.sort").forEach((b) => b.classList.remove("on", "desc", "asc"));
+  btn.classList.add("on", desc ? "desc" : "asc");
+  const tbody = table.tBodies[0];
+  const rows = [...tbody.rows];
+  rows.sort((a, b) => {
+    if (key === "name") return a.dataset.name.localeCompare(b.dataset.name, "pl") * (desc ? -1 : 1);
+    const va = a.dataset[key] === "" ? -Infinity : +a.dataset[key];
+    const vb = b.dataset[key] === "" ? -Infinity : +b.dataset[key];
+    return (desc ? vb - va : va - vb);
+  });
+  rows.forEach((r, i) => { r.cells[0].textContent = i + 1; tbody.appendChild(r); });
+});
 
 // Tabela ligowa z wyróżnieniem obu drużyn z meczu.
 function leagueTable(m, lg) {

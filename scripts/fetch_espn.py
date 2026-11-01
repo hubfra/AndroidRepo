@@ -23,7 +23,8 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).parent))
-from fetch_data import CACHE_DIR, CONFIG_PATH, OUT_DIR, compute_table, load_json, save_json  # noqa: E402
+from fetch_data import (CACHE_DIR, CONFIG_PATH, OUT_DIR, compute_table,  # noqa: E402
+                        compute_team_stats, load_json, save_json)
 
 BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer"
 SLUGS = {39: "eng.1", 140: "esp.1", 135: "ita.1", 78: "ger.1", 61: "fra.1"}
@@ -172,6 +173,7 @@ def build(day: date, cfg: dict) -> dict:
     # tabela ligowa z wyników bieżącego sezonu wszystkich drużyn ligi
     start_ts = datetime(season, 7, 1, tzinfo=tz).timestamp()
     tables: dict[int, list] = {}
+    league_games: dict[int, tuple] = {}
     for lg, slug, _, _ in day_matches:
         if lg["id"] in tables or slug not in league_teams:
             continue
@@ -181,6 +183,7 @@ def build(day: date, cfg: dict) -> dict:
                 if e["completed"] and e["ts"] >= start_ts:
                     games[e["id"]] = e
         tables[lg["id"]] = compute_table(list(games.values()))
+        league_games[lg["id"]] = (slug, list(games.values()))
         print(f"  tabela {lg['name']}: {len(games)} meczów, {len(tables[lg['id']])} drużyn", flush=True)
     for lg, slug, _, _ in day_matches:
         if lg["id"] not in tables and f"Nie udało się pobrać tabeli ligi {lg['name']}." not in notes:
@@ -202,6 +205,10 @@ def build(day: date, cfg: dict) -> dict:
             needed[e["id"]] = slug
         plan.append((lg, slug, logo, m, rec, h2h))
 
+    # średnie sezonowe wszystkich drużyn: statystyki każdego meczu sezonu
+    for slug, games in league_games.values():
+        for e in games:
+            needed.setdefault(e["id"], slug)
     todo = [(eid, slug) for eid, slug in needed.items() if eid not in stats_cache]
     print(f"Statystyki: {len(needed)} meczów, do pobrania {len(todo)}", flush=True)
 
@@ -238,7 +245,9 @@ def build(day: date, cfg: dict) -> dict:
     for lg, slug, logo, m, rec, h2h in sorted(plan, key=lambda p: p[3]["ts"]):
         out = leagues_out.setdefault(lg["id"], {
             "id": lg["id"], "name": lg["name"], "country": lg["country"], "logo": logo,
-            "season": season, "matches": [], "table": tables.get(lg["id"], [])})
+            "season": season, "matches": [], "table": tables.get(lg["id"], []),
+            "team_stats": compute_team_stats(league_games.get(lg["id"], (None, []))[1], vals,
+                                             [s["key"] for s in stats_cfg])})
 
         def recent_entry(e, tid):
             home = e["home"]["id"] == tid

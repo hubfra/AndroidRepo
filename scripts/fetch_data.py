@@ -189,6 +189,36 @@ def compute_table(games: list[dict]) -> list[dict]:
     return out
 
 
+def compute_team_stats(games: list[dict], vals, keys: list[str], last_n: int = 5) -> list[dict]:
+    """Średnie statystyk drużyn w sezonie i w ostatnich `last_n` meczach.
+
+    games: [{id, ts, home:{id,name,logo}, away:{...}}]
+    vals(game_id, team_id) -> {klucz: wartość | None}; mecze bez danych są pomijane.
+    """
+    per: dict = {}
+    for g in sorted(games, key=lambda g: g["ts"]):
+        for side in ("home", "away"):
+            t = g[side]
+            v = vals(g["id"], t["id"])
+            if not v or all(v.get(k) is None for k in keys):
+                continue
+            entry = per.setdefault(str(t["id"]), {"team": {"id": t["id"], "name": t["name"], "logo": t.get("logo")},
+                                                  "rows": []})
+            entry["rows"].append(v)
+
+    def mean(rows, k):
+        xs = [r.get(k) for r in rows if r.get(k) is not None]
+        return round(sum(xs) / len(xs), 2) if xs else None
+
+    out = []
+    for e in per.values():
+        rows = e["rows"]
+        out.append({"team": e["team"], "n": len(rows),
+                    "season": {k: mean(rows, k) for k in keys},
+                    "last": {k: mean(rows[-last_n:], k) for k in keys}})
+    return out
+
+
 def season_start_ts(season: int, tz: str) -> float:
     return datetime(season, 7, 1, tzinfo=ZoneInfo(tz)).timestamp()
 
@@ -322,6 +352,16 @@ class Builder:
         # Najpierw najnowsze mecze – przy ograniczonym limicie są najważniejsze.
         ts_by_id = {x["id"]: x["ts"] for lst in league_fixtures.values() for x in lst}
         uniq = sorted(set(needed), key=lambda i: -ts_by_id[i])
+        # Średnie sezonowe: wszystkie mecze bieżącego sezonu (niższy priorytet).
+        season_games: dict[int, list] = {}
+        for f in day_raw:
+            lid = f["league"]["id"]
+            if lid not in season_games:
+                start = season_start_ts(f["league"]["season"], self.tz)
+                season_games[lid] = [x for x in league_fixtures.get(lid, []) if x["ts"] >= start]
+        extra = sorted({x["id"] for lst in season_games.values() for x in lst} - set(uniq),
+                       key=lambda i: -ts_by_id[i])
+        uniq += extra
         self.fetch_stats(uniq)
 
         def recent_entry(x, team_id):
@@ -365,6 +405,9 @@ class Builder:
         for lid, lg in leagues_out.items():
             start = season_start_ts(lg["season"], self.tz)
             lg["table"] = compute_table([x for x in league_fixtures.get(lid, []) if x["ts"] >= start])
+            keys = [st["key"] for st in self.cfg["stats"]]
+            lg["team_stats"] = compute_team_stats(
+                season_games.get(lid, []), lambda gid, tid: self.stat_values(gid, tid), keys)
 
         order = [lg["id"] for lg in self.cfg["leagues"]]
         return {

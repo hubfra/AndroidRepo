@@ -24,7 +24,8 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).parent))
-from fetch_data import CONFIG_PATH, OUT_DIR, compute_table, load_json, save_json  # noqa: E402
+from fetch_data import (CONFIG_PATH, OUT_DIR, compute_table,  # noqa: E402
+                        compute_team_stats, load_json, save_json)
 
 BASE = "https://www.football-data.co.uk"
 DIVISIONS = {39: "E0", 140: "SP1", 135: "I1", 78: "D1", 61: "F1"}
@@ -200,8 +201,17 @@ def build(day: date, cfg: dict, src: Source) -> dict:
             "away": {"id": r["AwayTeam"], "name": r["AwayTeam"]},
             "goals": [to_int(r.get("FTHG")), to_int(r.get("FTAG"))],
             "ts": r["_kick"].timestamp()} for r in current if r.get("FTHG", "") != ""])
+        done_rows = [r for r in current if r.get("FTHG", "") != ""]
+        by_id = {i: r for i, r in enumerate(done_rows)}
+        team_stats = compute_team_stats(
+            [{"id": i, "ts": r["_kick"].timestamp(),
+              "home": {"id": r["HomeTeam"], "name": r["HomeTeam"]},
+              "away": {"id": r["AwayTeam"], "name": r["AwayTeam"]}} for i, r in by_id.items()],
+            lambda gid, tid: stat(by_id[gid], "H" if by_id[gid]["HomeTeam"] == tid else "A"),
+            [s["key"] for s in stats_cfg])
         leagues_out.append({"id": lg["id"], "name": lg["name"], "country": lg["country"],
-                            "logo": None, "season": start, "matches": matches, "table": table})
+                            "logo": None, "season": start, "matches": matches, "table": table,
+                            "team_stats": team_stats})
 
     if not fixtures:
         notes.append("Nie udało się pobrać terminarza (fixtures.csv).")

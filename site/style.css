@@ -184,6 +184,23 @@ body {
 .form .f-D { background: #8c8b84; }
 .form .f-L { background: #d03b3b; }
 
+/* Rozwijana tabela średnich w sekcji statystyki */
+details.sub { margin-top: 14px; border: 1px solid var(--border); border-radius: 8px; }
+details.sub > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px; min-height: 44px; font-size: 13px; font-weight: 600; color: var(--text-2); }
+details.sub > summary::-webkit-details-marker { display: none; }
+details.sub[open] > summary { border-bottom: 1px solid var(--border); }
+details.sub[open] > summary .chev { transform: rotate(180deg); }
+details.sub .tbl-wrap { padding: 4px 6px 10px; }
+.sttable td.v { font-weight: 600; }
+.sttable button.sort { all: unset; cursor: pointer; display: inline-flex; align-items: center; gap: 3px; padding: 4px 0; }
+.sttable button.sort:focus-visible { outline: 2px solid var(--home); border-radius: 3px; }
+.sttable button.sort.on { color: var(--text); }
+.sttable button.sort .arr::after { content: "↕"; opacity: .45; font-size: 10px; }
+.sttable button.sort.on.desc .arr::after { content: "↓"; opacity: 1; }
+.sttable button.sort.on.asc .arr::after { content: "↑"; opacity: 1; }
+.sttable th { vertical-align: bottom; }
+
 /* Wspólne style tabel */
 .tbl-wrap { overflow-x: auto; padding-top: 4px; }
 .mtable table { width: 100%; border-collapse: collapse; font-size: 11.5px; }

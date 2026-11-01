@@ -1,0 +1,17 @@
+name: Rozpoznanie ESPN
+on:
+  workflow_dispatch:
+    inputs:
+      day:
+        description: "RRRRMMDD"
+        default: "20261101"
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/espn_probe.py "$DAY"
+        env:
+          DAY: ${{ inputs.day }}

@@ -3,20 +3,64 @@
   "recent_matches": 10,
   "h2h_years": 2,
   "leagues": [
-    { "id": 39,  "name": "Premier League", "country": "Anglia" },
-    { "id": 140, "name": "LaLiga",         "country": "Hiszpania" },
-    { "id": 135, "name": "Serie A",        "country": "Włochy" },
-    { "id": 78,  "name": "Bundesliga",     "country": "Niemcy" },
-    { "id": 61,  "name": "Ligue 1",        "country": "Francja" }
+    {
+      "id": 39,
+      "name": "Premier League",
+      "country": "Anglia"
+    },
+    {
+      "id": 140,
+      "name": "LaLiga",
+      "country": "Hiszpania"
+    },
+    {
+      "id": 135,
+      "name": "Serie A",
+      "country": "Włochy"
+    },
+    {
+      "id": 78,
+      "name": "Bundesliga",
+      "country": "Niemcy"
+    },
+    {
+      "id": 61,
+      "name": "Ligue 1",
+      "country": "Francja"
+    }
   ],
   "stats": [
-    { "key": "corners", "api_type": "Corner Kicks", "label": "Rzuty rożne" }
+    {
+      "key": "corners",
+      "api_type": "Corner Kicks",
+      "label": "Rzuty rożne"
+    },
+    {
+      "key": "offsides",
+      "api_type": "Offsides",
+      "label": "Spalone"
+    },
+    {
+      "key": "fouls",
+      "api_type": "Fouls",
+      "label": "Faule (popełnione)"
+    }
   ],
   "available_stats_examples": [
-    { "key": "offsides", "api_type": "Offsides",      "label": "Spalone" },
-    { "key": "fouls",    "api_type": "Fouls",         "label": "Faule" },
-    { "key": "shots",    "api_type": "Total Shots",   "label": "Strzały" },
-    { "key": "shots_on", "api_type": "Shots on Goal", "label": "Strzały celne" },
-    { "key": "yellow",   "api_type": "Yellow Cards",  "label": "Żółte kartki" }
+    {
+      "key": "shots",
+      "api_type": "Total Shots",
+      "label": "Strzały"
+    },
+    {
+      "key": "shots_on",
+      "api_type": "Shots on Goal",
+      "label": "Strzały celne"
+    },
+    {
+      "key": "yellow",
+      "api_type": "Yellow Cards",
+      "label": "Żółte kartki"
+    }
   ]
 }

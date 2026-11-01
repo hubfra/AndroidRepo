@@ -7,7 +7,8 @@ Dla każdego meczu, po kliknięciu:
 - **ostatnie 10 meczów ligowych** każdej drużyny – średnia i wykres słupkowy,
 - **H2H z ostatnich 2 lat** (mecze ligowe) – porównanie obu drużyn mecz po meczu.
 
-Obecnie liczona statystyka: **rzuty rożne wywalczone przez drużynę**.
+Obecnie liczone statystyki (dla każdej drużyny osobno): **rzuty rożne** (wywalczone),
+**spalone** i **faule** (popełnione).
 
 ## Jak to działa
 
@@ -27,7 +28,7 @@ statystyk → Run workflow** (opcjonalnie z datą, np. `2026-11-08`).
 W `config.json`, w tablicy `stats`, dopisz wpis, np.:
 
 ```json
-{ "key": "offsides", "api_type": "Offsides", "label": "Spalone" }
+{ "key": "shots", "api_type": "Total Shots", "label": "Strzały" }
 ```
 
 Gotowe przykłady są w `available_stats_examples`. Cache przechowuje wszystkie

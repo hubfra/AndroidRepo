@@ -147,10 +147,12 @@ def build(day: date, cfg: dict, src: Source) -> dict:
             return {s["key"]: to_int(r.get(COLUMNS[s["key"]][0 if side == "H" else 1]))
                     for s in stats_cfg}
 
-        def recent(team):
+        def recent(team, only=None):
             out = []
             for r in played:
                 if team not in (r["HomeTeam"], r["AwayTeam"]):
+                    continue
+                if only == "H" and r["HomeTeam"] != team or only == "A" and r["AwayTeam"] != team:
                     continue
                 home = r["HomeTeam"] == team
                 gf, ga = (r["FTHG"], r["FTAG"]) if home else (r["FTAG"], r["FTHG"])
@@ -161,6 +163,7 @@ def build(day: date, cfg: dict, src: Source) -> dict:
                     "venue": "D" if home else "W",
                     "score": f"{gf}:{ga}",
                     "stats": stat(r, "H" if home else "A"),
+                    "against": stat(r, "A" if home else "H"),
                 })
                 if len(out) == cfg["recent_matches"]:
                     break
@@ -194,6 +197,7 @@ def build(day: date, cfg: dict, src: Source) -> dict:
                 "home": {"id": home, "name": home, "logo": None},
                 "away": {"id": away, "name": away, "logo": None},
                 "recent": {"home": recent(home), "away": recent(away)},
+                "recent_venue": {"home": recent(home, "H"), "away": recent(away, "A")},
                 "h2h": h2h,
             })
         table = compute_table([{

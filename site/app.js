@@ -105,17 +105,75 @@ function matchRow(m) {
   </div>`;
 }
 
+const AGAINST = { corners: "rożne oddane rywalom", offsides: "spalone rywali", fouls: "faule rywali" };
+const AGAINST_HINT = {
+  corners: "Ile rzutów rożnych wywalczyli rywale tej drużyny – czyli ile rożnych drużyna oddaje.",
+  offsides: "Ile spalonych mieli rywale tej drużyny – im więcej, tym skuteczniej drużyna łapie na spalonym.",
+  fouls: "Ile fauli popełnili rywale tej drużyny – czyli ile fauli drużyna wymusza.",
+};
+
+const seg = (name, opts) => `<div class="seg" role="group" data-seg="${name}">${opts.map(([v, l], i) =>
+  `<button type="button" data-v="${v}" class="${i === 0 ? "on" : ""}" aria-pressed="${i === 0}">${l}</button>`).join("")}</div>`;
+
+// Przełączniki widoku (Wszystkie / Dom-wyjazd, Za / Przeciw).
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest?.(".seg button");
+  if (!btn) return;
+  const group = btn.parentElement, box = btn.closest(".rsec, .sttable");
+  group.querySelectorAll("button").forEach((b) => { b.classList.toggle("on", b === btn); b.setAttribute("aria-pressed", b === btn); });
+  box.dataset[group.dataset.seg] = btn.dataset.v;
+  if (box.classList.contains("rsec")) {
+    box.querySelectorAll(".rv").forEach((v) => {
+      v.hidden = !(v.dataset.venue === box.dataset.venue && v.dataset.dir === box.dataset.dir);
+    });
+  } else {
+    applySeasonDir(box);
+  }
+});
+
+function oddsBlock(m) {
+  const o = m.odds;
+  if (!o) return "";
+  const raw = [o.home, o.draw, o.away].map((x) => (x ? 1 / x : 0));
+  const sum = raw.reduce((a, b) => a + b, 0) || 1;
+  const fav = Math.min(...[o.home, o.away].filter(Boolean));
+  const cell = (lbl, v, open, i, side) => {
+    if (!v) return `<div class="oc"><span class="ol">${lbl}</span><b>–</b></div>`;
+    let mv = "";
+    if (open && Math.abs(open - v) >= 0.01) {
+      mv = v < open ? `<span class="mv dn" title="kurs spadł z ${open.toFixed(2)}">▼ ${open.toFixed(2)}</span>`
+        : `<span class="mv up" title="kurs wzrósł z ${open.toFixed(2)}">▲ ${open.toFixed(2)}</span>`;
+    }
+    const sw = side ? `<i style="background:var(--${side})"></i>` : "";
+    return `<div class="oc${v === fav ? " fav" : ""}"><span class="ol">${sw}${lbl}</span><b>${v.toFixed(2)}</b>
+      <span class="op">${Math.round((raw[i] / sum) * 100)}%</span>${mv}</div>`;
+  };
+  const t = o.total || {};
+  const tot = t.line != null && (t.over || t.under)
+    ? `<p class="ototal">Gole ${t.line}: powyżej <b>${t.over ? t.over.toFixed(2) : "–"}</b> · poniżej <b>${t.under ? t.under.toFixed(2) : "–"}</b></p>` : "";
+  return `<div class="odds"><div class="ohead">Kursy${o.provider ? ` (${esc(o.provider)})` : ""}</div>
+    <div class="ogrid">${cell("1", o.home, (o.open || {}).home, 0, "home")}${cell("X", o.draw, (o.open || {}).draw, 1)}${cell("2", o.away, (o.open || {}).away, 2, "away")}</div>
+    ${tot}<p class="tbl-note">% – szansa wg kursów (bez marży). ▼/▲ – kurs otwarcia: spadek oznacza, że rynek mocniej stawia na tę drużynę.</p></div>`;
+}
+
 function details(m, data, lg) {
   let html = `<div class="legend">
     <span><i style="background:var(--home)"></i>${esc(m.home.name)}</span>
     <span><i style="background:var(--away)"></i>${esc(m.away.name)}</span></div>`;
+  html += oddsBlock(m);
   for (const st of data.stats) {
     const k = st.key;
     const rh = [...m.recent.home].reverse();  // od najstarszego do najnowszego
     const ra = [...m.recent.away].reverse();
+    const vh = [...((m.recent_venue || {}).home || [])].reverse();
+    const va = [...((m.recent_venue || {}).away || [])].reverse();
     const h2h = [...m.h2h].reverse();
-    const vals = [...rh, ...ra].map((x) => x.stats[k]).concat(h2h.flatMap((x) => [x.stats[k].home, x.stats[k].away]));
+    const pick = (x, dir) => (dir === "against" ? (x.against || {})[k] : x.stats[k]);
+    const vals = [...rh, ...ra, ...vh, ...va].flatMap((x) => [x.stats[k], (x.against || {})[k]])
+      .concat(h2h.flatMap((x) => [x.stats[k].home, x.stats[k].away]));
     const yMax = Math.max(4, ...vals.filter((v) => v != null));
+    const hasAgainst = rh.some((x) => x.against && x.against[k] != null);
+    const hasVenue = vh.length || va.length;
 
     const ah = avg(rh.map((x) => x.stats[k])), aa = avg(ra.map((x) => x.stats[k]));
     html += `<details class="stat-block"><summary>
@@ -124,10 +182,25 @@ function details(m, data, lg) {
         <span>śr.</span><i style="background:var(--away)"></i><b style="color:var(--text)">${fmt1(aa)}</b></span>
       <svg class="chev" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 7.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </summary><div class="st-body">`;
-    html += `<div class="section"><h4>Ostatnie ${data.recent_matches} meczów ligowych</h4>`;
-    html += compare(ah, aa, "średnio na mecz");
-    html += barChart(m.home.name, "home", rh.map((x) => recentPoint(x, k)), yMax);
-    html += barChart(m.away.name, "away", ra.map((x) => recentPoint(x, k)), yMax);
+    html += `<div class="section rsec" data-venue="all" data-dir="for"><h4>Ostatnie ${data.recent_matches} meczów ligowych</h4>`;
+    html += `<div class="segs">`;
+    if (hasVenue) html += seg("venue", [["all", "Wszystkie"], ["venue", "Dom / wyjazd"]]);
+    if (hasAgainst) html += seg("dir", [["for", "Za"], ["against", "Przeciw"]]);
+    html += `</div>`;
+    for (const venue of hasVenue ? ["all", "venue"] : ["all"]) {
+      const [lh, la] = venue === "all" ? [rh, ra] : [vh, va];
+      for (const dir of hasAgainst ? ["for", "against"] : ["for"]) {
+        const lbl = dir === "for" ? "średnio na mecz" : AGAINST[k] || "średnio rywale";
+        const sfx = venue === "venue" ? [" · u siebie", " · na wyjeździe"] : ["", ""];
+        const dirNote = dir === "against" ? " – rywale" : "";
+        html += `<div class="rv" data-venue="${venue}" data-dir="${dir}"${venue === "all" && dir === "for" ? "" : " hidden"}>`;
+        if (dir === "against") html += `<p class="hint">${esc(AGAINST_HINT[k] || "Wartości rywali w tych meczach.")}</p>`;
+        html += compare(avg(lh.map((x) => pick(x, dir))), avg(la.map((x) => pick(x, dir))), lbl);
+        html += barChart(m.home.name + sfx[0] + dirNote, "home", lh.map((x) => recentPoint(x, k, dir)), yMax);
+        html += barChart(m.away.name + sfx[1] + dirNote, "away", la.map((x) => recentPoint(x, k, dir)), yMax);
+        html += `</div>`;
+      }
+    }
     html += `</div>`;
 
     html += `<div class="section"><h4>H2H · ostatnie ${data.h2h_years} lata (${data.h2h_scope === "all" ? "wszystkie rozgrywki" : "liga"})</h4>`;
@@ -146,41 +219,63 @@ function details(m, data, lg) {
   return html;
 }
 
-// Średnie danej statystyki wszystkich drużyn ligi: cały sezon i ostatnie 5 meczów (sortowalne).
+// Średnie danej statystyki wszystkich drużyn ligi: cały sezon i ostatnie 5 meczów (sortowalne),
+// „za” (drużyna) albo „przeciw” (rywale drużyny).
 function seasonTable(m, lg, st) {
   const rows = ((lg && lg.team_stats) || []).filter((r) => r.season[st.key] != null);
   if (!rows.length) return "";
   const k = st.key;
+  const hasA = rows.some((r) => r.season_against && r.season_against[k] != null);
   const sideOf = (r) => String(r.team.id) === String(m.home.id) ? "home"
     : String(r.team.id) === String(m.away.id) ? "away" : "";
   const sorted = rows.slice().sort((a, b) => (b.season[k] ?? -1) - (a.season[k] ?? -1));
+  const dv = (v) => (v ?? "");
   const body = sorted.map((r, i) => {
     const side = sideOf(r);
     return `<tr class="${side ? "hl hl-" + side : ""}" data-name="${esc(r.team.name)}"
-        data-season="${r.season[k] ?? ""}" data-last="${r.last[k] ?? ""}">
+        data-season-for="${dv(r.season[k])}" data-last-for="${dv(r.last[k])}"
+        data-season-against="${dv((r.season_against || {})[k])}" data-last-against="${dv((r.last_against || {})[k])}"
+        data-season="${dv(r.season[k])}" data-last="${dv(r.last[k])}">
       <td class="n rk">${i + 1}</td><td class="tm">${esc(r.team.name)}</td>
       <td class="n muted">${r.n}</td>
-      <td class="n v">${fmtAvg(r.season[k])}</td><td class="n v">${fmtAvg(r.last[k])}</td></tr>`;
+      <td class="n v vs">${fmtAvg(r.season[k])}</td><td class="n v vl">${fmtAvg(r.last[k])}</td></tr>`;
   }).join("");
   const th = (key, label, cls = "n") =>
     `<th class="${cls}"><button type="button" class="sort${key === "season" ? " on desc" : ""}" data-sort="${key}">${label}<span class="arr"></span></button></th>`;
-  return `<details class="sub mtable ltable sttable"><summary>Średnie wszystkich drużyn ligi
+  return `<details class="sub mtable ltable sttable" data-dir="for"><summary>Średnie wszystkich drużyn ligi
       <svg class="chev" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 7.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></summary>
-    <div class="tbl-wrap"><table>
+    <div class="tbl-wrap">${hasA ? `<div class="segs">${seg("dir", [["for", "Za"], ["against", "Przeciw"]])}</div>` : ""}<table>
       <thead><tr><th class="n">#</th>${th("name", "Drużyna", "")}<th class="n" title="mecze z danymi">M</th>
         ${th("season", "Sezon")}${th("last", "Ost. 5")}</tr></thead>
       <tbody>${body}</tbody></table>
-    <p class="tbl-note">Średnio na mecz w bieżącym sezonie ligowym. „Ost. 5” – średnia z 5 ostatnich meczów. Dotknij nagłówka, by sortować.</p></div></details>`;
+    <p class="tbl-note"><span class="dir-for">Średnio na mecz – wartości drużyny.</span><span class="dir-against" hidden>Przeciw – ${esc(AGAINST[k] || "wartości rywali")} (średnio na mecz).</span>
+      „Ost. 5” – 5 ostatnich meczów ligowych. Dotknij nagłówka, by sortować.</p></div></details>`;
 }
 
-// Sortowanie tabel średnich (delegacja zdarzeń).
-document.addEventListener("click", (e) => {
-  const btn = e.target.closest?.(".sttable button.sort");
-  if (!btn) return;
+function applySeasonDir(box) {
+  const dir = box.dataset.dir;
+  box.querySelectorAll("tbody tr").forEach((r) => {
+    r.dataset.season = r.dataset[dir === "for" ? "seasonFor" : "seasonAgainst"];
+    r.dataset.last = r.dataset[dir === "for" ? "lastFor" : "lastAgainst"];
+    r.querySelector(".vs").textContent = r.dataset.season === "" ? "–" : fmtAvg(+r.dataset.season);
+    r.querySelector(".vl").textContent = r.dataset.last === "" ? "–" : fmtAvg(+r.dataset.last);
+  });
+  box.querySelector(".dir-for").hidden = dir !== "for";
+  box.querySelector(".dir-against").hidden = dir === "for";
+  const active = box.querySelector("button.sort.on") || box.querySelector('button.sort[data-sort="season"]');
+  sortTable(active, active.classList.contains("asc") ? "asc" : "desc");
+}
+
+// Sortowanie tabel średnich.
+function sortTable(btn, forceDir) {
   const table = btn.closest("table");
   const key = btn.dataset.sort;
-  const wasDesc = btn.classList.contains("on") && btn.classList.contains("desc");
-  const desc = btn.classList.contains("on") ? !wasDesc : key !== "name";
+  let desc;
+  if (forceDir) desc = forceDir === "desc";
+  else {
+    const wasDesc = btn.classList.contains("on") && btn.classList.contains("desc");
+    desc = btn.classList.contains("on") ? !wasDesc : key !== "name";
+  }
   table.querySelectorAll("button.sort").forEach((b) => b.classList.remove("on", "desc", "asc"));
   btn.classList.add("on", desc ? "desc" : "asc");
   const tbody = table.tBodies[0];
@@ -192,7 +287,18 @@ document.addEventListener("click", (e) => {
     return (desc ? vb - va : va - vb);
   });
   rows.forEach((r, i) => { r.cells[0].textContent = i + 1; tbody.appendChild(r); });
+}
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest?.(".sttable button.sort");
+  if (btn) sortTable(btn);
 });
+
+const ZONE_PL = {
+  "Champions League": "Liga Mistrzów", "Europa League": "Liga Europy",
+  "Conference League": "Liga Konferencji", "Europa Conference League": "Liga Konferencji",
+  "Relegation": "Spadek", "Relegation Playoff": "Baraż o utrzymanie", "Relegation playoff": "Baraż o utrzymanie",
+  "Champions League qualifying": "El. Ligi Mistrzów", "Conference League qualifying": "El. Ligi Konferencji",
+};
 
 // Tabela ligowa z wyróżnieniem obu drużyn z meczu.
 function leagueTable(m, lg) {
@@ -206,13 +312,17 @@ function leagueTable(m, lg) {
     const side = sideOf(r);
     const gd = r.gd > 0 ? `+${r.gd}` : r.gd;
     return `<tr class="${side ? "hl hl-" + side : ""}">
-      <td class="n rk">${r.rank}</td>
+      <td class="n rk">${r.zone && r.zone.color ? `<span class="zn" style="background:${esc(r.zone.color)}"></span>` : ""}${r.rank}</td>
       <td class="tm">${esc(r.team.name)}</td>
       <td class="n">${r.p}</td><td class="n">${r.w}</td><td class="n">${r.d}</td><td class="n">${r.l}</td>
       <td class="n gl">${r.gf}:${r.ga}<small>${gd}</small></td>
       <td class="n pts">${r.pts}</td>
       <td>${formCell(r.form)}</td></tr>`;
   }).join("");
+  const zmap = new Map();
+  rows.forEach((r) => { if (r.zone && r.zone.color && r.zone.label) zmap.set(r.zone.label, r.zone.color); });
+  const zones = zmap.size ? `<div class="zones">${[...zmap].map(([l, c]) =>
+    `<span><i style="background:${esc(c)}"></i>${esc(ZONE_PL[l] || l)}</span>`).join("")}</div>` : "";
   const pos = (id) => rows.find((r) => String(r.team.id) === String(id));
   const ph = pos(m.home.id), pa = pos(m.away.id);
   const sum = ph && pa ? `<span class="st-avg">${ph.rank}. <i style="background:var(--home)"></i>
@@ -223,14 +333,16 @@ function leagueTable(m, lg) {
       <thead><tr><th class="n">#</th><th>Drużyna</th><th class="n" title="mecze">M</th><th class="n" title="zwycięstwa">Z</th>
         <th class="n" title="remisy">R</th><th class="n" title="porażki">P</th><th class="n">Bramki</th><th class="n">Pkt</th><th>Forma</th></tr></thead>
       <tbody>${body}</tbody></table>
-    <p class="tbl-note">M – mecze, Z – zwycięstwa, R – remisy, P – porażki. Forma: 5 ostatnich meczów ligowych, najnowszy z prawej.
-      Przy równej liczbie punktów kolejność może różnić się od oficjalnej.</p></div></details>`;
+    ${zones}<p class="tbl-note">M – mecze, Z – zwycięstwa, R – remisy, P – porażki. Forma: 5 ostatnich meczów ligowych, najnowszy z prawej.
+      ${rows.some((r) => r.zone !== undefined) ? "Tabela oficjalna (ESPN)." : "Przy równej liczbie punktów kolejność może różnić się od oficjalnej."}</p></div></details>`;
 }
 
-function recentPoint(x, k) {
+function recentPoint(x, k, dir = "for") {
+  const own = x.stats[k], opp = (x.against || {})[k];
   return {
-    v: x.stats[k], top: abbr(x.opponent), bottom: x.venue,
-    tip: `${shortDate(x.date)} · ${x.venue === "D" ? "dom" : "wyjazd"}<br>vs ${esc(x.opponent)} (${esc(x.score)})`,
+    v: dir === "against" ? opp : own, top: abbr(x.opponent), bottom: x.venue,
+    tip: `${shortDate(x.date)} · ${x.venue === "D" ? "dom" : "wyjazd"}<br>vs ${esc(x.opponent)} (${esc(x.score)})` +
+      (opp != null ? `<br>drużyna: ${own ?? "b/d"} · rywal: ${opp}` : ""),
   };
 }
 

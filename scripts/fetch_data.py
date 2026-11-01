@@ -190,21 +190,23 @@ def compute_table(games: list[dict]) -> list[dict]:
 
 
 def compute_team_stats(games: list[dict], vals, keys: list[str], last_n: int = 5) -> list[dict]:
-    """Średnie statystyk drużyn w sezonie i w ostatnich `last_n` meczach.
+    """Średnie statystyk drużyn w sezonie i w ostatnich `last_n` meczach – „za” i „przeciw”.
 
     games: [{id, ts, home:{id,name,logo}, away:{...}}]
     vals(game_id, team_id) -> {klucz: wartość | None}; mecze bez danych są pomijane.
+    „Przeciw” to wartości rywala w tym samym meczu (np. rożne oddane, faule wymuszone).
     """
     per: dict = {}
     for g in sorted(games, key=lambda g: g["ts"]):
-        for side in ("home", "away"):
+        for side, other in (("home", "away"), ("away", "home")):
             t = g[side]
             v = vals(g["id"], t["id"])
             if not v or all(v.get(k) is None for k in keys):
                 continue
             entry = per.setdefault(str(t["id"]), {"team": {"id": t["id"], "name": t["name"], "logo": t.get("logo")},
-                                                  "rows": []})
+                                                  "rows": [], "against": []})
             entry["rows"].append(v)
+            entry["against"].append(vals(g["id"], g[other]["id"]) or {})
 
     def mean(rows, k):
         xs = [r.get(k) for r in rows if r.get(k) is not None]
@@ -212,10 +214,12 @@ def compute_team_stats(games: list[dict], vals, keys: list[str], last_n: int = 5
 
     out = []
     for e in per.values():
-        rows = e["rows"]
+        rows, ag = e["rows"], e["against"]
         out.append({"team": e["team"], "n": len(rows),
                     "season": {k: mean(rows, k) for k in keys},
-                    "last": {k: mean(rows[-last_n:], k) for k in keys}})
+                    "last": {k: mean(rows[-last_n:], k) for k in keys},
+                    "season_against": {k: mean(ag, k) for k in keys},
+                    "last_against": {k: mean(ag[-last_n:], k) for k in keys}})
     return out
 
 
@@ -343,11 +347,13 @@ class Builder:
                 return games[:n_recent]
 
             rec_home, rec_away = recent_for(home["id"]), recent_for(away["id"])
+            ven_home = [x for x in history if x["home"]["id"] == home["id"]][:n_recent]
+            ven_away = [x for x in history if x["away"]["id"] == away["id"]][:n_recent]
             h2h = [x for x in history
                    if {x["home"]["id"], x["away"]["id"]} == {home["id"], away["id"]}
                    and x["ts"] >= h2h_from.timestamp()]
-            needed += [x["id"] for x in rec_home + rec_away + h2h]
-            matches_out.append((f, rec_home, rec_away, h2h))
+            needed += [x["id"] for x in rec_home + rec_away + h2h + ven_home + ven_away]
+            matches_out.append((f, rec_home, rec_away, h2h, ven_home, ven_away))
 
         # Najpierw najnowsze mecze – przy ograniczonym limicie są najważniejsze.
         ts_by_id = {x["id"]: x["ts"] for lst in league_fixtures.values() for x in lst}
@@ -370,10 +376,11 @@ class Builder:
             gf, ga = (x["goals"][0], x["goals"][1]) if is_home else (x["goals"][1], x["goals"][0])
             return {"id": x["id"], "date": x["date"], "opponent": opp["name"],
                     "venue": "D" if is_home else "W", "score": f"{gf}:{ga}",
-                    "stats": self.stat_values(x["id"], team_id)}
+                    "stats": self.stat_values(x["id"], team_id),
+                    "against": self.stat_values(x["id"], opp["id"])}
 
         leagues_out: dict[int, dict] = {}
-        for f, rec_home, rec_away, h2h in matches_out:
+        for f, rec_home, rec_away, h2h, ven_home, ven_away in matches_out:
             lid = f["league"]["id"]
             lg = leagues_out.setdefault(lid, {
                 "id": lid, "name": leagues_cfg[lid]["name"],
@@ -391,6 +398,8 @@ class Builder:
                 "away": {"id": away["id"], "name": away["name"], "logo": away.get("logo")},
                 "recent": {"home": [recent_entry(x, home["id"]) for x in rec_home],
                            "away": [recent_entry(x, away["id"]) for x in rec_away]},
+                "recent_venue": {"home": [recent_entry(x, home["id"]) for x in ven_home],
+                                 "away": [recent_entry(x, away["id"]) for x in ven_away]},
                 "h2h": [{
                     "id": x["id"], "date": x["date"],
                     "host": "home" if x["home"]["id"] == home["id"] else "away",
@@ -466,6 +475,20 @@ def main() -> int:
     data["requests_used"] = api.used
     if args.mock:
         data["notes"].insert(0, "Tryb demo – zmyślone dane testowe, nie prawdziwe statystyki.")
+        import random
+        rnd = random.Random(1)
+        for lg in data["leagues"]:
+            n = len(lg.get("table", []))
+            for r in lg.get("table", []):
+                r["zone"] = ({"color": "#81D6AC", "label": "Champions League"} if r["rank"] <= 2 else
+                             {"color": "#FFD45B", "label": "Europa League"} if r["rank"] == 3 else
+                             {"color": "#FF7F84", "label": "Relegation"} if r["rank"] > n - 2 else None)
+            for m in lg["matches"]:
+                h = round(rnd.uniform(1.6, 4.5), 2)
+                a_ = round(rnd.uniform(1.6, 4.5), 2)
+                m["odds"] = {"provider": "Demo", "home": h, "draw": 3.4, "away": a_,
+                             "open": {"home": round(h + 0.2, 2), "away": round(a_ - 0.15, 2), "draw": 3.4},
+                             "total": {"line": 2.5, "over": 1.8, "under": 2.0}}
     save_json(OUT_DIR / "matches.json", data)
     n = sum(len(lg["matches"]) for lg in data["leagues"])
     print(f"Zapisano {n} meczów do {OUT_DIR / 'matches.json'} (zapytań: {api.used}, "

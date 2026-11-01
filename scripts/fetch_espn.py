@@ -94,6 +94,78 @@ def num(v):
         return None
 
 
+V2 = "https://site.api.espn.com/apis/v2/sports/soccer"
+CORE = "https://sports.core.api.espn.com/v2/sports/soccer/leagues"
+
+
+def american_to_decimal(v):
+    try:
+        v = float(v)
+    except (TypeError, ValueError):
+        return None
+    if v == 0:
+        return None
+    return round(1 + v / 100, 2) if v > 0 else round(1 + 100 / abs(v), 2)
+
+
+def fetch_odds(slug: str, eid: str) -> dict | None:
+    """Kursy 1X2 i linia goli (bieżące oraz otwarcia, jeśli dostępne)."""
+    try:
+        sm = get(f"{BASE}/{slug}/summary?event={eid}")
+    except RuntimeError:
+        return None
+    pc = (sm.get("pickcenter") or sm.get("odds") or [None])[0]
+    if not pc:
+        return None
+    out = {
+        "provider": (pc.get("provider") or {}).get("name"),
+        "home": american_to_decimal((pc.get("homeTeamOdds") or {}).get("moneyLine")),
+        "away": american_to_decimal((pc.get("awayTeamOdds") or {}).get("moneyLine")),
+        "draw": american_to_decimal((pc.get("drawOdds") or {}).get("moneyLine")),
+        "total": {"line": pc.get("overUnder"),
+                  "over": american_to_decimal(pc.get("overOdds")),
+                  "under": american_to_decimal(pc.get("underOdds"))},
+        "open": {},
+    }
+    try:
+        core = get(f"{CORE}/{slug}/events/{eid}/competitions/{eid}/odds")
+        item = (core.get("items") or [None])[0] or {}
+        for side, key in (("home", "homeTeamOdds"), ("away", "awayTeamOdds"), ("draw", "drawOdds")):
+            op = ((item.get(key) or {}).get("open") or {}).get("moneyLine") or {}
+            if op.get("decimal"):
+                out["open"][side] = round(float(op["decimal"]), 2)
+    except (RuntimeError, ValueError, TypeError):
+        pass
+    if not any(out[k] for k in ("home", "away", "draw")):
+        return None
+    return out
+
+
+def fetch_standings(slug: str) -> list[dict]:
+    """Oficjalna tabela ESPN: [{id, name, logo, rank, p, w, d, l, gf, ga, gd, pts, zone}]."""
+    d = get(f"{V2}/{slug}/standings")
+    entries = (((d.get("children") or [{}])[0].get("standings") or {}).get("entries")) or []
+    rows = []
+    for en in entries:
+        t = en.get("team")
+        if isinstance(t, dict):
+            tid, name = str(t.get("id")), t.get("displayName") or t.get("name")
+            logos = t.get("logos") or []
+            logo = logos[0].get("href") if logos else t.get("logo")
+        else:
+            tid, name, logo = str(en.get("id")), t, None
+        st = {x.get("name"): x.get("value") for x in en.get("stats", [])}
+        iv = lambda k: int(st[k]) if st.get(k) is not None else 0  # noqa: E731
+        note = en.get("note") or {}
+        rows.append({"team": {"id": tid, "name": name, "logo": logo},
+                     "rank": iv("rank"), "p": iv("gamesPlayed"), "w": iv("wins"), "d": iv("ties"),
+                     "l": iv("losses"), "gf": iv("pointsFor"), "ga": iv("pointsAgainst"),
+                     "gd": iv("pointDifferential"), "pts": iv("points"),
+                     "zone": {"color": note.get("color"), "label": note.get("description")} if note else None})
+    rows.sort(key=lambda r: r["rank"] or 999)
+    return rows
+
+
 def parse_event(e: dict) -> dict:
     c = e["competitions"][0]
     teams = {t["homeAway"]: t for t in c["competitors"]}
@@ -218,7 +290,18 @@ def build(day: date, cfg: dict) -> dict:
             for e in schedules.get((slug, tid, season), []):
                 if e["completed"] and e["ts"] >= start_ts:
                     games[e["id"]] = e
-        tables[lg["id"]] = compute_table(list(games.values()))
+        computed = compute_table(list(games.values()))
+        tables[lg["id"]] = computed
+        try:
+            official = fetch_standings(slug)
+            form = {str(r["team"]["id"]): r["form"] for r in computed}
+            if official and all(r["p"] for r in official[:3]):
+                for r in official:
+                    r["form"] = form.get(str(r["team"]["id"]), [])
+                tables[lg["id"]] = official
+                print(f"  oficjalna tabela {lg['name']}: {len(official)} drużyn", flush=True)
+        except (RuntimeError, KeyError, ValueError, TypeError) as exc:
+            print(f"  brak oficjalnej tabeli {lg['name']}: {exc}", flush=True)
         league_games[lg["id"]] = (slug, list(games.values()))
         print(f"  tabela {lg['name']}: {len(games)} meczów, {len(tables[lg['id']])} drużyn", flush=True)
     for lg, slug, _, _ in day_matches:
@@ -240,7 +323,14 @@ def build(day: date, cfg: dict) -> dict:
                       if e["ts"] < kick and e["ts"] >= h2h_from
                       and {e["home"]["id"], e["away"]["id"]} == {m["home"]["id"], m["away"]["id"]}),
                      key=lambda e: -e["ts"])
-        for e in rec["home"] + rec["away"]:
+        venue = {
+            "home": [e for e in team_games.get((slug, m["home"]["id"]), [])
+                     if e["ts"] < kick and e["home"]["id"] == m["home"]["id"]][:n_recent],
+            "away": [e for e in team_games.get((slug, m["away"]["id"]), [])
+                     if e["ts"] < kick and e["away"]["id"] == m["away"]["id"]][:n_recent],
+        }
+        rec["venue"] = venue
+        for e in rec["home"] + rec["away"] + venue["home"] + venue["away"]:
             needed[e["id"]] = slug
         for e in h2h:
             needed[e["id"]] = e.get("comp", slug)
@@ -275,6 +365,12 @@ def build(day: date, cfg: dict) -> dict:
     if failed:
         notes.append(f"Brak statystyk dla {failed} meczów (błąd pobierania).")
 
+    # kursy bukmacherskie (ESPN / DraftKings) dla meczów dnia
+    with ThreadPoolExecutor(WORKERS) as pool:
+        odds = dict(zip([m["id"] for _, _, _, m in day_matches],
+                        pool.map(lambda x: fetch_odds(x[1], x[3]["id"]), day_matches)))
+    print(f"Kursy: {sum(1 for v in odds.values() if v)} z {len(odds)} meczów", flush=True)
+
     def vals(eid, tid):
         team = (stats_cache.get(eid) or {}).get(tid) or {}
         return {s["key"]: team.get(STAT_NAMES[s["key"]]) for s in stats_cfg}
@@ -296,7 +392,8 @@ def build(day: date, cfg: dict) -> dict:
             return {"id": e["id"], "date": iso(e),
                     "opponent": (e["away"] if home else e["home"])["name"],
                     "venue": "D" if home else "W", "score": f"{gf}:{ga}",
-                    "stats": vals(e["id"], tid)}
+                    "stats": vals(e["id"], tid),
+                    "against": vals(e["id"], (e["away"] if home else e["home"])["id"])}
 
         status = {"pre": "NS", "in": "LIVE", "post": "FT"}.get(m["state"], "NS")
         out["matches"].append({
@@ -305,6 +402,9 @@ def build(day: date, cfg: dict) -> dict:
             "home": m["home"], "away": m["away"],
             "recent": {side: [recent_entry(e, m[side]["id"]) for e in rec[side]]
                        for side in ("home", "away")},
+            "recent_venue": {side: [recent_entry(e, m[side]["id"]) for e in rec["venue"][side]]
+                             for side in ("home", "away")},
+            "odds": odds.get(m["id"]),
             "h2h": [{
                 "id": e["id"], "date": iso(e),
                 "host": "home" if e["home"]["id"] == m["home"]["id"] else "away",

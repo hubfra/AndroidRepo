@@ -10,6 +10,10 @@ on:
         description: "Dzień w formacie RRRR-MM-DD (puste = dziś)"
         required: false
         default: ""
+      demo:
+        description: "Tryb demo: zmyślone dane testowe, bez API"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -46,12 +50,12 @@ jobs:
           MAX_REQUESTS: ${{ vars.MAX_REQUESTS || '90' }}
           REQUEST_DELAY: ${{ vars.REQUEST_DELAY || '6.5' }}
           INPUT_DATE: ${{ inputs.date }}
+          INPUT_DEMO: ${{ inputs.demo }}
         run: |
-          if [ -n "$INPUT_DATE" ]; then
-            python scripts/fetch_data.py --date "$INPUT_DATE"
-          else
-            python scripts/fetch_data.py
-          fi
+          args=()
+          [ -n "$INPUT_DATE" ] && args+=(--date "$INPUT_DATE")
+          [ "$INPUT_DEMO" = "true" ] && args+=(--mock)
+          python scripts/fetch_data.py "${args[@]}"
 
       - name: Zapisz dane z API na kolejne dni
         if: always()

@@ -23,7 +23,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).parent))
-from fetch_data import CACHE_DIR, CONFIG_PATH, OUT_DIR, load_json, save_json  # noqa: E402
+from fetch_data import CACHE_DIR, CONFIG_PATH, OUT_DIR, compute_table, load_json, save_json  # noqa: E402
 
 BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer"
 SLUGS = {39: "eng.1", 140: "esp.1", 135: "ita.1", 78: "ger.1", 61: "fra.1"}
@@ -107,6 +107,7 @@ def build(day: date, cfg: dict) -> dict:
 
     # 1) mecze dnia
     day_matches = []  # (league_cfg, slug, league_logo, event)
+    tables: dict[int, list] = {}
     for lg in cfg["leagues"]:
         slug = SLUGS.get(lg["id"])
         if not slug:
@@ -119,6 +120,23 @@ def build(day: date, cfg: dict) -> dict:
         print(f"{lg['name']}: {len(evs)} meczów", flush=True)
         for e in evs:
             day_matches.append((lg, slug, logo, e))
+        if evs:
+            # tabela ligowa: wszystkie mecze sezonu do dziś
+            try:
+                rng = get(f"{BASE}/{slug}/scoreboard?dates={season}0701-{day:%Y%m%d}&limit=1000")
+                games = []
+                for e in rng.get("events", []):
+                    try:
+                        pe = parse_event(e)
+                    except (KeyError, IndexError, ValueError):
+                        continue
+                    if pe["completed"]:
+                        games.append(pe)
+                tables[lg["id"]] = compute_table(games)
+                print(f"  tabela: {len(games)} zakończonych meczów, {len(tables[lg['id']])} drużyn", flush=True)
+            except RuntimeError as exc:
+                print(f"  błąd tabeli: {exc}", flush=True)
+                notes.append(f"Nie udało się pobrać tabeli ligi {lg['name']}.")
 
     # 2) terminarze drużyn (bieżący i 2 poprzednie sezony, tylko liga)
     team_keys = sorted({(slug, e[side]["id"]) for _, slug, _, e in day_matches for side in ("home", "away")})
@@ -205,7 +223,7 @@ def build(day: date, cfg: dict) -> dict:
     for lg, slug, logo, m, rec, h2h in sorted(plan, key=lambda p: p[3]["ts"]):
         out = leagues_out.setdefault(lg["id"], {
             "id": lg["id"], "name": lg["name"], "country": lg["country"], "logo": logo,
-            "season": season, "matches": []})
+            "season": season, "matches": [], "table": tables.get(lg["id"], [])})
 
         def recent_entry(e, tid):
             home = e["home"]["id"] == tid

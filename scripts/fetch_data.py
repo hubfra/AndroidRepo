@@ -154,6 +154,45 @@ def parse_statistics(stat_blocks: list) -> dict:
     return out
 
 
+def compute_table(games: list[dict]) -> list[dict]:
+    """Tabela ligowa z listy zakończonych meczów.
+
+    games: [{home:{id,name,logo}, away:{...}, goals:[h, a], ts}]
+    Kolejność: punkty, bilans bramek, bramki zdobyte, nazwa (bez reguł
+    bezpośrednich meczów, więc przy równej liczbie punktów może się różnić
+    od oficjalnej).
+    """
+    rows: dict = {}
+    for g in sorted(games, key=lambda g: g["ts"]):
+        hg, ag = g["goals"]
+        if hg is None or ag is None:
+            continue
+        for side, gf, ga in (("home", hg, ag), ("away", ag, hg)):
+            t = g[side]
+            r = rows.setdefault(str(t["id"]), {"team": {"id": t["id"], "name": t["name"], "logo": t.get("logo")},
+                                               "p": 0, "w": 0, "d": 0, "l": 0, "gf": 0, "ga": 0, "form": []})
+            r["p"] += 1
+            r["gf"] += gf
+            r["ga"] += ga
+            res = "W" if gf > ga else "D" if gf == ga else "L"
+            r[{"W": "w", "D": "d", "L": "l"}[res]] += 1
+            r["form"].append(res)
+    out = []
+    for r in rows.values():
+        r["gd"] = r["gf"] - r["ga"]
+        r["pts"] = 3 * r["w"] + r["d"]
+        r["form"] = r["form"][-5:]
+        out.append(r)
+    out.sort(key=lambda r: (-r["pts"], -r["gd"], -r["gf"], r["team"]["name"] or ""))
+    for i, r in enumerate(out, 1):
+        r["rank"] = i
+    return out
+
+
+def season_start_ts(season: int, tz: str) -> float:
+    return datetime(season, 7, 1, tzinfo=ZoneInfo(tz)).timestamp()
+
+
 # ------------------------------------------------------------------------- core
 
 
@@ -322,6 +361,10 @@ class Builder:
                               for s in self.cfg["stats"]},
                 } for x in h2h],
             })
+
+        for lid, lg in leagues_out.items():
+            start = season_start_ts(lg["season"], self.tz)
+            lg["table"] = compute_table([x for x in league_fixtures.get(lid, []) if x["ts"] >= start])
 
         order = [lg["id"] for lg in self.cfg["leagues"]]
         return {

@@ -24,7 +24,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).parent))
-from fetch_data import CONFIG_PATH, OUT_DIR, load_json, save_json  # noqa: E402
+from fetch_data import CONFIG_PATH, OUT_DIR, compute_table, load_json, save_json  # noqa: E402
 
 BASE = "https://www.football-data.co.uk"
 DIVISIONS = {39: "E0", 140: "SP1", 135: "I1", 78: "D1", 61: "F1"}
@@ -126,8 +126,12 @@ def build(day: date, cfg: dict, src: Source) -> dict:
         if not div:
             continue
         history: list[dict] = []
+        current: list[dict] = []
         for y in range(start, start - 3, -1):
-            history += parse_rows(src.get(f"mmz4281/{season_code(y)}/{div}.csv"))
+            rows = parse_rows(src.get(f"mmz4281/{season_code(y)}/{div}.csv"))
+            history += rows
+            if y == start:
+                current = rows
         played = [r for r in history if r.get("FTHG", "") != "" and r["_date"] < day]
         played.sort(key=lambda r: r["_kick"], reverse=True)
 
@@ -191,8 +195,13 @@ def build(day: date, cfg: dict, src: Source) -> dict:
                 "recent": {"home": recent(home), "away": recent(away)},
                 "h2h": h2h,
             })
+        table = compute_table([{
+            "home": {"id": r["HomeTeam"], "name": r["HomeTeam"]},
+            "away": {"id": r["AwayTeam"], "name": r["AwayTeam"]},
+            "goals": [to_int(r.get("FTHG")), to_int(r.get("FTAG"))],
+            "ts": r["_kick"].timestamp()} for r in current if r.get("FTHG", "") != ""])
         leagues_out.append({"id": lg["id"], "name": lg["name"], "country": lg["country"],
-                            "logo": None, "season": start, "matches": matches})
+                            "logo": None, "season": start, "matches": matches, "table": table})
 
     if not fixtures:
         notes.append("Nie udało się pobrać terminarza (fixtures.csv).")

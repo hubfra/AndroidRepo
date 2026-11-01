@@ -73,6 +73,9 @@ jobs:
             python scripts/fetch_data.py "${args[@]}"
           fi
 
+      - name: Podsumowanie meczów (podgląd w logach)
+        run: python scripts/summary.py || true
+
       - name: Zapisz dane z API na kolejne dni
         if: always()
         uses: actions/cache/save@v4

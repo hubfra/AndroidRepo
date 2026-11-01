@@ -103,7 +103,7 @@ body {
 .team .nm { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .team .sc { margin-left: auto; font-weight: 700; }
 .chev { width: 20px; height: 20px; color: var(--muted); transition: transform .2s; }
-.match.open .chev { transform: rotate(180deg); }
+.match.open > .match-row .chev { transform: rotate(180deg); }
 
 .details { padding: 4px 12px 12px; background: var(--panel); border-top: 1px solid var(--border); }
 
@@ -127,8 +127,18 @@ body {
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
 
-.stat-block { margin-top: 14px; }
-.stat-block > h3 { font-size: 14px; margin: 0 0 6px; }
+.stat-block { margin-top: 10px; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.stat-block > summary {
+  list-style: none; cursor: pointer; display: flex; align-items: center; gap: 10px;
+  padding: 10px 12px; min-height: 48px; font-weight: 700; font-size: 14px;
+}
+.stat-block > summary::-webkit-details-marker { display: none; }
+.stat-block > summary:focus-visible { outline: 2px solid var(--home); outline-offset: -2px; border-radius: 8px; }
+.stat-block .st-avg { margin-left: auto; display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 500; color: var(--muted); }
+.stat-block .st-avg i { width: 8px; height: 8px; border-radius: 2px; display: inline-block; }
+.stat-block[open] > summary { border-bottom: 1px solid var(--border); }
+.stat-block[open] > summary .chev { transform: rotate(180deg); }
+.st-body { padding: 0 12px 12px; }
 .section { margin: 10px 0 0; }
 .section h4 { margin: 0 0 6px; font-size: 11px; font-weight: 600; text-transform: uppercase;
   letter-spacing: .04em; color: var(--muted); }
@@ -159,11 +169,6 @@ body {
 .chart svg .hit:hover + rect, .chart svg .hit:focus + rect { opacity: .8; }
 .empty { color: var(--muted); font-size: 12px; padding: 6px 0; }
 
-details.tbl { margin-top: 8px; font-size: 12px; color: var(--text-2); }
-details.tbl summary { cursor: pointer; padding: 4px 0; }
-details.tbl table { width: 100%; border-collapse: collapse; margin-top: 4px; }
-details.tbl th, details.tbl td { padding: 4px 6px; border-bottom: 1px solid var(--border); text-align: left; }
-details.tbl td.n, details.tbl th.n { text-align: right; }
 
 .tip {
   position: fixed; z-index: 20; pointer-events: none;

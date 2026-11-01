@@ -115,12 +115,17 @@ function details(m, data) {
     const vals = [...rh, ...ra].map((x) => x.stats[k]).concat(h2h.flatMap((x) => [x.stats[k].home, x.stats[k].away]));
     const yMax = Math.max(4, ...vals.filter((v) => v != null));
 
-    html += `<div class="stat-block"><h3>${esc(st.label)}</h3>`;
+    const ah = avg(rh.map((x) => x.stats[k])), aa = avg(ra.map((x) => x.stats[k]));
+    html += `<details class="stat-block"><summary>
+      <span class="st-name">${esc(st.label)}</span>
+      <span class="st-avg"><b style="color:var(--text)">${fmt1(ah)}</b><i style="background:var(--home)"></i>
+        <span>śr.</span><i style="background:var(--away)"></i><b style="color:var(--text)">${fmt1(aa)}</b></span>
+      <svg class="chev" viewBox="0 0 20 20" aria-hidden="true"><path d="M5 7.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </summary><div class="st-body">`;
     html += `<div class="section"><h4>Ostatnie ${data.recent_matches} meczów ligowych</h4>`;
-    html += compare(avg(rh.map((x) => x.stats[k])), avg(ra.map((x) => x.stats[k])), "średnio na mecz");
+    html += compare(ah, aa, "średnio na mecz");
     html += barChart(m.home.name, "home", rh.map((x) => recentPoint(x, k)), yMax);
     html += barChart(m.away.name, "away", ra.map((x) => recentPoint(x, k)), yMax);
-    html += recentTable(m, rh, ra, k, st.label);
     html += `</div>`;
 
     html += `<div class="section"><h4>H2H · ostatnie ${data.h2h_years} lata (liga)</h4>`;
@@ -130,7 +135,7 @@ function details(m, data) {
       html += compare(avg(h2h.map((x) => x.stats[k].home)), avg(h2h.map((x) => x.stats[k].away)), `średnio w ${h2h.length} H2H`);
       html += groupedChart(m, h2h, k, yMax);
     }
-    html += `</div></div>`;
+    html += `</div></div></details>`;
   }
   html += `<button class="collapse" type="button">Zwiń statystyki
     <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 12.5l5-5 5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
@@ -218,13 +223,6 @@ function groupedChart(m, h2h, k, yMax) {
   return `<div class="chart"><svg viewBox="0 0 ${W} ${base + 24}" role="img" aria-label="Porównanie w meczach H2H">${s}</svg></div>`;
 }
 
-function recentTable(m, rh, ra, k, label) {
-  const rows = (team, list) => list.slice().reverse().map((x) =>
-    `<tr><td>${esc(team)}</td><td>${shortDate(x.date)}</td><td>${x.venue} vs ${esc(x.opponent)}</td><td>${esc(x.score)}</td><td class="n">${x.stats[k] ?? "b/d"}</td></tr>`).join("");
-  return `<details class="tbl"><summary>Tabela</summary><table>
-    <thead><tr><th>Drużyna</th><th>Data</th><th>Mecz</th><th>Wynik</th><th class="n">${esc(label)}</th></tr></thead>
-    <tbody>${rows(m.home.name, rh)}${rows(m.away.name, ra)}</tbody></table></details>`;
-}
 
 // ---------------------------------------------------------------- dymki
 let tipFor = null;

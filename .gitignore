@@ -1,0 +1,6 @@
+# Generowane przez scripts/fetch_data.py (w GitHub Actions)
+cache/
+cache-mock/
+site/data/
+__pycache__/
+*.tmp

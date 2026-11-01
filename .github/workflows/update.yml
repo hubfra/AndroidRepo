@@ -1,0 +1,75 @@
+name: Aktualizacja statystyk
+
+on:
+  schedule:
+    # Codziennie 4:15 UTC (5:15 zimą / 6:15 latem czasu polskiego).
+    - cron: "15 4 * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Dzień w formacie RRRR-MM-DD (puste = dziś)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Przywróć zapisane dane z API
+        uses: actions/cache/restore@v4
+        with:
+          path: cache
+          key: api-cache-${{ github.run_id }}
+          restore-keys: api-cache-
+
+      - name: Testy
+        run: python -m unittest discover -s tests -v
+
+      - name: Pobierz dane i zbuduj zestawienie
+        env:
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+          MAX_REQUESTS: ${{ vars.MAX_REQUESTS || '90' }}
+          REQUEST_DELAY: ${{ vars.REQUEST_DELAY || '6.5' }}
+          INPUT_DATE: ${{ inputs.date }}
+        run: |
+          if [ -n "$INPUT_DATE" ]; then
+            python scripts/fetch_data.py --date "$INPUT_DATE"
+          else
+            python scripts/fetch_data.py
+          fi
+
+      - name: Zapisz dane z API na kolejne dni
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: cache
+          key: api-cache-${{ github.run_id }}
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

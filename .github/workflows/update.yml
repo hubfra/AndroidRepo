@@ -10,6 +10,13 @@ on:
         description: "Dzień w formacie RRRR-MM-DD (puste = dziś)"
         required: false
         default: ""
+      source:
+        description: "Źródło danych"
+        type: choice
+        options:
+          - api-football
+          - football-data (darmowe, bez spalonych)
+        default: api-football
       demo:
         description: "Tryb demo: zmyślone dane testowe, bez API"
         type: boolean
@@ -51,11 +58,17 @@ jobs:
           REQUEST_DELAY: ${{ vars.REQUEST_DELAY || '6.5' }}
           INPUT_DATE: ${{ inputs.date }}
           INPUT_DEMO: ${{ inputs.demo }}
+          INPUT_SOURCE: ${{ inputs.source || vars.DATA_SOURCE || 'api-football' }}
         run: |
           args=()
           [ -n "$INPUT_DATE" ] && args+=(--date "$INPUT_DATE")
-          [ "$INPUT_DEMO" = "true" ] && args+=(--mock)
-          python scripts/fetch_data.py "${args[@]}"
+          if [ "$INPUT_DEMO" = "true" ]; then
+            python scripts/fetch_data.py "${args[@]}" --mock
+          elif [[ "$INPUT_SOURCE" == football-data* ]]; then
+            python scripts/fetch_fdcouk.py "${args[@]}"
+          else
+            python scripts/fetch_data.py "${args[@]}"
+          fi
 
       - name: Zapisz dane z API na kolejne dni
         if: always()

@@ -14,6 +14,7 @@
   --away: #eb6834;   /* seria 2 – gość */
   --missing: #c9c8c2;
   --accent: #c8102e;
+  --panel: #efefec;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
@@ -30,6 +31,7 @@
     --home: #3987e5;
     --away: #d95926;
     --missing: #4a4a46;
+    --panel: #242422;
   }
 }
 :root[data-theme="dark"] {
@@ -45,6 +47,7 @@
   --home: #3987e5;
   --away: #d95926;
   --missing: #4a4a46;
+  --panel: #242422;
 }
 
 * { box-sizing: border-box; }
@@ -87,7 +90,7 @@ body {
 .match-row {
   width: 100%; display: grid; grid-template-columns: 52px 1fr 24px; align-items: center; gap: 8px;
   padding: 10px 12px; background: none; border: 0; color: inherit; font: inherit; text-align: left;
-  cursor: pointer; min-height: 56px;
+  cursor: pointer; min-height: 56px; scroll-margin-top: 72px;
 }
 .match-row:hover { background: var(--surface-2); }
 .match-row:focus-visible { outline: 2px solid var(--home); outline-offset: -2px; }
@@ -102,7 +105,24 @@ body {
 .chev { width: 20px; height: 20px; color: var(--muted); transition: transform .2s; }
 .match.open .chev { transform: rotate(180deg); }
 
-.details { padding: 4px 12px 16px; border-top: 1px dashed var(--border); }
+.details { padding: 4px 12px 12px; background: var(--panel); border-top: 1px solid var(--border); }
+
+/* Rozwinięty mecz: wyraźnie oddzielony od kolejnego spotkania */
+.match.open { position: relative; }
+.match.open::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 4px; background: var(--home); z-index: 1; }
+.match.open .match-row { background: var(--surface-2); }
+.match.open .match-row .teams { font-weight: 700; }
+.match.open:not(:last-child) { border-bottom: 12px solid var(--bg); }
+.match.open .details { border-bottom: 1px solid var(--border); }
+.match.open + .match { border-top: 0; }
+.collapse {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  width: 100%; margin-top: 16px; padding: 10px; min-height: 44px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text-2); font: inherit; font-size: 13px; cursor: pointer;
+}
+.collapse:hover { color: var(--text); }
+.collapse svg { width: 16px; height: 16px; }
 .legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 12px; color: var(--text-2); margin: 10px 0 2px; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
 .legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }

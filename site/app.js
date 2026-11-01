@@ -73,6 +73,10 @@ function render(data) {
       if (open && !det.dataset.ready) {
         det.innerHTML = details(byId.get(box.dataset.id), data);
         det.dataset.ready = "1";
+        det.querySelector(".collapse").addEventListener("click", () => {
+          btn.click();
+          if (btn.getBoundingClientRect().top < 72) btn.scrollIntoView({ block: "start" });
+        });
       }
       det.hidden = !open;
     });
@@ -128,6 +132,8 @@ function details(m, data) {
     }
     html += `</div></div>`;
   }
+  html += `<button class="collapse" type="button">Zwiń statystyki
+    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 12.5l5-5 5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
   return html;
 }
 

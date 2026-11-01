@@ -137,9 +137,52 @@ function details(m, data) {
     }
     html += `</div></div></details>`;
   }
+  html += matchTable(m, data);
   html += `<button class="collapse" type="button">Zwiń statystyki
     <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M5 12.5l5-5 5 5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></button>`;
   return html;
+}
+
+// Jedna zbiorcza tabela dla meczu: ostatnie mecze obu drużyn i H2H, wszystkie statystyki.
+function matchTable(m, data) {
+  const stats = data.stats;
+  const short = (iso) => new Date(iso).toLocaleDateString("pl-PL", { day: "2-digit", month: "2-digit" });
+  const head = `<tr><th>Data</th><th></th><th>Rywal</th><th class="n">Wynik</th>${stats.map((s) =>
+    `<th class="n" title="${esc(s.label)}">${esc(s.label.split(" ")[0])}</th>`).join("")}</tr>`;
+  const group = (title, side) => `<tr class="grp"><th colspan="${4 + stats.length}">
+    <i style="background:var(--${side})"></i>${esc(title)}</th></tr>`;
+  const avgRow = (vals) => `<tr class="avg"><td colspan="4">Średnia</td>${vals.map((v) =>
+    `<td class="n">${fmt1(v)}</td>`).join("")}</tr>`;
+
+  // H2H: wartość gospodarza (niebieski) nad wartością gościa (pomarańczowy)
+  const pair = (h, a) => `<td class="n pair"><span class="h">${h}</span><span class="a">${a}</span></td>`;
+  let body = "";
+  for (const side of ["home", "away"]) {
+    const list = m.recent[side];
+    body += group(`${m[side].name} · ostatnie ${list.length} meczów ligowych`, side);
+    if (!list.length) { body += `<tr><td colspan="${4 + stats.length}" class="muted">Brak danych.</td></tr>`; continue; }
+    for (const x of list) {
+      body += `<tr><td>${short(x.date)}</td><td class="ven">${x.venue}</td><td class="opp">${esc(x.opponent)}</td>
+        <td class="n">${esc(x.score)}</td>${stats.map((s) => `<td class="n">${x.stats[s.key] ?? "–"}</td>`).join("")}</tr>`;
+    }
+    body += avgRow(stats.map((s) => avg(list.map((x) => x.stats[s.key]))));
+  }
+  body += group(`H2H · ostatnie ${data.h2h_years} lata (${esc(abbr(m.home.name))} – ${esc(abbr(m.away.name))})`, "muted");
+  if (!m.h2h.length) {
+    body += `<tr><td colspan="${4 + stats.length}" class="muted">Brak spotkań w ostatnich ${data.h2h_years} latach.</td></tr>`;
+  } else {
+    for (const g of m.h2h) {
+      const hostName = g.host === "home" ? m.home.name : m.away.name;
+      body += `<tr><td>${shortDate(g.date)}</td><td class="ven" title="${esc(g.label)}">${esc(abbr(hostName))}</td><td class="opp">${esc(g.label.replace(hostName, "").replace(/^\s*–\s*|\s*–\s*$/g, ""))}</td><td class="n">${esc(g.score)}</td>
+        ${stats.map((s) => pair(g.stats[s.key].home ?? "–", g.stats[s.key].away ?? "–")).join("")}</tr>`;
+    }
+    body += `<tr class="avg"><td colspan="4">Średnia</td>${stats.map((s) =>
+      pair(fmt1(avg(m.h2h.map((g) => g.stats[s.key].home))), fmt1(avg(m.h2h.map((g) => g.stats[s.key].away))))).join("")}</tr>`;
+  }
+  return `<details class="stat-block mtable"><summary><span class="st-name">Tabela</span>
+      <svg class="chev" viewBox="0 0 20 20" aria-hidden="true" style="margin-left:auto"><path d="M5 7.5l5 5 5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </summary><div class="st-body tbl-wrap"><table><thead>${head}</thead><tbody>${body}</tbody></table>
+    <p class="tbl-note">D – u siebie, W – na wyjeździe. W H2H druga kolumna to gospodarz tamtego meczu; górna wartość to ${esc(m.home.name)}, dolna ${esc(m.away.name)}.</p></div></details>`;
 }
 
 function recentPoint(x, k) {

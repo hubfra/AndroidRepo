@@ -10,6 +10,18 @@ Dla każdego meczu, po kliknięciu:
 Obecnie liczone statystyki (dla każdej drużyny osobno): **rzuty rożne** (wywalczone),
 **spalone** i **faule** (popełnione).
 
+## Źródła danych
+
+| Źródło | Koszt | Rożne | Spalone | Faule | Uwagi |
+|---|---|---|---|---|---|
+| **ESPN** (domyślne) | darmowe | ✅ | ✅ | ✅ | nieoficjalne API, może się zmienić bez ostrzeżenia |
+| **API-Football** | płatny plan | ✅ | ✅ | ✅ | darmowy plan nie obejmuje bieżącego sezonu |
+| **football-data.co.uk** | darmowe | ✅ | ❌ | ✅ | wyniki aktualizowane ~2× w tygodniu |
+
+Źródło wybiera się przy ręcznym uruchomieniu (Run workflow → „Źródło danych”).
+Codzienna automatyczna aktualizacja używa zmiennej repozytorium `DATA_SOURCE`
+(Settings → Secrets and variables → Actions → Variables), a gdy jej nie ma – ESPN.
+
 ## Jak to działa
 
 1. GitHub Actions (`.github/workflows/update.yml`) codziennie ok. 5:15/6:15

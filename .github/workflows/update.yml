@@ -14,10 +14,10 @@ on:
         description: "Źródło danych"
         type: choice
         options:
-          - api-football
           - espn (darmowe, ze spalonymi)
+          - api-football
           - football-data (darmowe, bez spalonych)
-        default: api-football
+        default: espn (darmowe, ze spalonymi)
       demo:
         description: "Tryb demo: zmyślone dane testowe, bez API"
         type: boolean
@@ -59,7 +59,7 @@ jobs:
           REQUEST_DELAY: ${{ vars.REQUEST_DELAY || '6.5' }}
           INPUT_DATE: ${{ inputs.date }}
           INPUT_DEMO: ${{ inputs.demo }}
-          INPUT_SOURCE: ${{ inputs.source || vars.DATA_SOURCE || 'api-football' }}
+          INPUT_SOURCE: ${{ inputs.source || vars.DATA_SOURCE || 'espn' }}
         run: |
           args=()
           [ -n "$INPUT_DATE" ] && args+=(--date "$INPUT_DATE")

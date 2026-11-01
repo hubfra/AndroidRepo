@@ -15,6 +15,7 @@ on:
         type: choice
         options:
           - api-football
+          - espn (darmowe, ze spalonymi)
           - football-data (darmowe, bez spalonych)
         default: api-football
       demo:
@@ -64,6 +65,8 @@ jobs:
           [ -n "$INPUT_DATE" ] && args+=(--date "$INPUT_DATE")
           if [ "$INPUT_DEMO" = "true" ]; then
             python scripts/fetch_data.py "${args[@]}" --mock
+          elif [[ "$INPUT_SOURCE" == espn* ]]; then
+            python scripts/fetch_espn.py "${args[@]}"
           elif [[ "$INPUT_SOURCE" == football-data* ]]; then
             python scripts/fetch_fdcouk.py "${args[@]}"
           else

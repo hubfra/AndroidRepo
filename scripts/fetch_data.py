@@ -370,6 +370,10 @@ def main() -> int:
         return 2
     except ApiError as exc:
         print(f"Błąd API: {exc}", file=sys.stderr)
+        if "Free plans" in str(exc):
+            print("Darmowy plan API-Football nie obejmuje tego sezonu. Wykup płatny plan "
+                  "(README.md, sekcja „Plan płatny”) albo do testów uruchom aktualizację "
+                  "z datą z sezonu 2024/25, np. 2025-04-12.", file=sys.stderr)
         return 3
 
     data["requests_used"] = api.used

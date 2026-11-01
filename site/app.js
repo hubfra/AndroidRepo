@@ -130,9 +130,9 @@ function details(m, data, lg) {
     html += barChart(m.away.name, "away", ra.map((x) => recentPoint(x, k)), yMax);
     html += `</div>`;
 
-    html += `<div class="section"><h4>H2H · ostatnie ${data.h2h_years} lata (liga)</h4>`;
+    html += `<div class="section"><h4>H2H · ostatnie ${data.h2h_years} lata (${data.h2h_scope === "all" ? "wszystkie rozgrywki" : "liga"})</h4>`;
     if (!h2h.length) {
-      html += `<div class="empty">Brak spotkań ligowych tych drużyn w ostatnich ${data.h2h_years} latach.</div>`;
+      html += `<div class="empty">Brak spotkań tych drużyn w ostatnich ${data.h2h_years} latach.</div>`;
     } else {
       html += compare(avg(h2h.map((x) => x.stats[k].home)), avg(h2h.map((x) => x.stats[k].away)), `średnio w ${h2h.length} H2H`);
       html += groupedChart(m, h2h, k, yMax);
@@ -264,7 +264,7 @@ function barChart(title, side, pts, yMax) {
   pts.forEach((p, i) => {
     const cx = PAD_L + sw * i + sw / 2, x = cx - bw / 2;
     const hitTip = `<b>${p.v == null ? "brak danych" : p.v}</b> · ${p.tip}`;
-    s += `<rect class="hit" x="${cx - sw / 2}" y="0" width="${sw}" height="${base + 26}" data-tip="${esc(hitTip)}" tabindex="0"/>`;
+    s += `<rect class="hit" x="${cx - sw / 2}" y="0" width="${sw}" height="${base + 36}" data-tip="${esc(hitTip)}" tabindex="0"/>`;
     if (p.v == null) {
       s += `<rect x="${x}" y="${base - 3}" width="${bw}" height="3" rx="1" fill="var(--missing)"/>`;
       s += `<text x="${cx}" y="${base - 6}" text-anchor="middle">b/d</text>`;
@@ -283,17 +283,21 @@ function barChart(title, side, pts, yMax) {
     <svg viewBox="0 0 ${W} ${base + 24}" role="img" aria-label="${esc(title)}: wartości z ostatnich meczów">${s}</svg></div>`;
 }
 
+const compShort = (c) => ({ "Liga Mistrzów": "LM", "Liga Europy": "LE", "Liga Konferencji": "LK",
+  "Superpuchar UEFA": "Superpuchar", "Tarcza Wspólnoty": "Tarcza" }[c] || (c && c.startsWith("Puchar") ? "Puchar" : c) || "");
+
 function groupedChart(m, h2h, k, yMax) {
   const H = 70, base = TOP + H, slots = Math.max(h2h.length, 4);
+  const anyComp = h2h.some((g) => g.comp);
   const sw = (W - PAD_L - PAD_R) / slots, bw = Math.min(16, sw * 0.28), gap = 2;
   const y = (v) => base - (v / yMax) * H;
   let s = `<line class="grid" x1="0" x2="${W}" y1="${base}" y2="${base}"/>`;
   h2h.forEach((g, i) => {
     const cx = PAD_L + sw * i + sw / 2;
     const vals = [["home", g.stats[k].home, cx - gap / 2 - bw], ["away", g.stats[k].away, cx + gap / 2]];
-    const t = `${shortDate(g.date)} · ${esc(g.label)} ${esc(g.score)}<br>` +
+    const t = `${shortDate(g.date)}${g.comp ? " · " + esc(g.comp) : ""}<br>${esc(g.label)} ${esc(g.score)}<br>` +
       `${esc(m.home.name)}: <b>${g.stats[k].home ?? "b/d"}</b><br>${esc(m.away.name)}: <b>${g.stats[k].away ?? "b/d"}</b>`;
-    s += `<rect class="hit" x="${cx - sw / 2}" y="0" width="${sw}" height="${base + 26}" data-tip="${esc(t)}" tabindex="0"/>`;
+    s += `<rect class="hit" x="${cx - sw / 2}" y="0" width="${sw}" height="${base + 36}" data-tip="${esc(t)}" tabindex="0"/>`;
     for (const [side, v, x] of vals) {
       if (v == null) {
         s += `<rect x="${x}" y="${base - 3}" width="${bw}" height="3" rx="1" fill="var(--missing)"/>`;
@@ -304,8 +308,9 @@ function groupedChart(m, h2h, k, yMax) {
     }
     s += `<text x="${cx}" y="${base + 11}" text-anchor="middle">${shortDate(g.date)}</text>`;
     s += `<text x="${cx}" y="${base + 21}" text-anchor="middle">${g.host === "home" ? abbr(m.home.name) : abbr(m.away.name)} dom · ${esc(g.score)}</text>`;
+    if (anyComp) s += `<text x="${cx}" y="${base + 31}" text-anchor="middle" class="${g.comp && g.comp !== "Liga" ? "cup" : ""}">${esc(compShort(g.comp))}</text>`;
   });
-  return `<div class="chart"><svg viewBox="0 0 ${W} ${base + 24}" role="img" aria-label="Porównanie w meczach H2H">${s}</svg></div>`;
+  return `<div class="chart"><svg viewBox="0 0 ${W} ${base + (anyComp ? 34 : 24)}" role="img" aria-label="Porównanie w meczach H2H">${s}</svg></div>`;
 }
 
 

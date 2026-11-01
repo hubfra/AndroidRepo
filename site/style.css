@@ -164,6 +164,7 @@ body {
 .chart svg { display: block; width: 100%; height: auto; overflow: visible; }
 .chart svg text { fill: var(--muted); font-size: 9px; }
 .chart svg text.val { fill: var(--text-2); font-size: 9.5px; font-weight: 600; }
+.chart svg text.cup { fill: var(--text); font-weight: 700; }
 .chart svg .grid { stroke: var(--grid); stroke-width: 1; }
 .chart svg .avg { stroke: var(--text-2); stroke-width: 1; stroke-dasharray: 3 3; }
 .chart svg .hit { fill: transparent; cursor: pointer; }

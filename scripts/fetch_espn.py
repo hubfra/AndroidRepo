@@ -38,6 +38,25 @@ STAT_NAMES = {
     "yellow": "yellowCards",
 }
 WORKERS = 6
+# Inne rozgrywki do H2H (puchary krajowe, superpuchary, europejskie puchary).
+UEFA = ["uefa.champions", "uefa.europa", "uefa.europa.conf", "uefa.super_cup"]
+CUPS = {
+    "eng.1": ["eng.fa", "eng.league_cup", "eng.charity"],
+    "esp.1": ["esp.copa_del_rey", "esp.super_cup"],
+    "ita.1": ["ita.coppa_italia", "ita.super_cup"],
+    "ger.1": ["ger.dfb_pokal", "ger.super_cup"],
+    "fra.1": ["fra.coupe_de_france", "fra.super_cup"],
+}
+COMP_NAMES = {
+    "eng.1": "Liga", "esp.1": "Liga", "ita.1": "Liga", "ger.1": "Liga", "fra.1": "Liga",
+    "uefa.champions": "Liga Mistrzów", "uefa.europa": "Liga Europy",
+    "uefa.europa.conf": "Liga Konferencji", "uefa.super_cup": "Superpuchar UEFA",
+    "eng.fa": "Puchar Anglii", "eng.league_cup": "Puchar Ligi", "eng.charity": "Tarcza Wspólnoty",
+    "esp.copa_del_rey": "Puchar Króla", "esp.super_cup": "Superpuchar",
+    "ita.coppa_italia": "Puchar Włoch", "ita.super_cup": "Superpuchar",
+    "ger.dfb_pokal": "Puchar Niemiec", "ger.super_cup": "Superpuchar",
+    "fra.coupe_de_france": "Puchar Francji", "fra.super_cup": "Superpuchar",
+}
 
 
 def get(url: str) -> dict:
@@ -153,14 +172,31 @@ def build(day: date, cfg: dict) -> dict:
         out = []
         for e in data.get("events", []):
             try:
-                out.append(parse_event(e))
+                pe = parse_event(e)
             except (KeyError, IndexError, ValueError):
                 continue
+            pe["comp"] = slug
+            out.append(pe)
         return job, out
 
+    # H2H we wszystkich rozgrywkach: terminarze pucharowe gospodarzy dzisiejszych meczów
+    h2h_jobs = sorted({(cs, e["home"]["id"], s) for _, slug, _, e in day_matches
+                       for cs in CUPS.get(slug, []) + UEFA for s in (season, season - 1, season - 2)})
+    jobs += [j for j in h2h_jobs if j not in set(jobs)]
     with ThreadPoolExecutor(WORKERS) as pool:
         schedules = dict(pool.map(fetch_schedule, jobs))
-    print(f"Pobrano {len(jobs)} terminarzy", flush=True)
+    print(f"Pobrano {len(jobs)} terminarzy (w tym {len(h2h_jobs)} pucharowych do H2H)", flush=True)
+    cup_games: dict[str, dict] = {}
+    for (cs, tid, _), evs in schedules.items():
+        if cs in COMP_NAMES and not cs.endswith(".1"):
+            for e in evs:
+                if e["completed"]:
+                    cup_games.setdefault(tid, {})[e["id"]] = e
+    found = {}
+    for evs in cup_games.values():
+        for e in evs.values():
+            found[e["comp"]] = found.get(e["comp"], 0) + 1
+    print(f"  mecze pucharowe gospodarzy: {found}", flush=True)
 
     team_games: dict[tuple, list] = {}
     for (slug, tid, _), evs in schedules.items():
@@ -198,11 +234,16 @@ def build(day: date, cfg: dict) -> dict:
         for side in ("home", "away"):
             games = [e for e in team_games.get((slug, m[side]["id"]), []) if e["ts"] < kick]
             rec[side] = games[:n_recent]
-        h2h = [e for e in team_games.get((slug, m["home"]["id"]), [])
-               if e["ts"] < kick and e["ts"] >= h2h_from
-               and {e["home"]["id"], e["away"]["id"]} == {m["home"]["id"], m["away"]["id"]}]
-        for e in rec["home"] + rec["away"] + h2h:
+        pool_h2h = {e["id"]: e for e in team_games.get((slug, m["home"]["id"]), [])}
+        pool_h2h.update(cup_games.get(m["home"]["id"], {}))
+        h2h = sorted((e for e in pool_h2h.values()
+                      if e["ts"] < kick and e["ts"] >= h2h_from
+                      and {e["home"]["id"], e["away"]["id"]} == {m["home"]["id"], m["away"]["id"]}),
+                     key=lambda e: -e["ts"])
+        for e in rec["home"] + rec["away"]:
             needed[e["id"]] = slug
+        for e in h2h:
+            needed[e["id"]] = e.get("comp", slug)
         plan.append((lg, slug, logo, m, rec, h2h))
 
     # średnie sezonowe wszystkich drużyn: statystyki każdego meczu sezonu
@@ -269,6 +310,7 @@ def build(day: date, cfg: dict) -> dict:
                 "host": "home" if e["home"]["id"] == m["home"]["id"] else "away",
                 "score": f"{e['goals'][0]}:{e['goals'][1]}",
                 "label": f"{e['home']['name']} – {e['away']['name']}",
+                "comp": COMP_NAMES.get(e.get("comp", slug), e.get("comp")),
                 "stats": {s["key"]: {"home": vals(e["id"], m["home"]["id"])[s["key"]],
                                      "away": vals(e["id"], m["away"]["id"])[s["key"]]}
                           for s in stats_cfg},
@@ -282,6 +324,7 @@ def build(day: date, cfg: dict) -> dict:
         "timezone": cfg["timezone"],
         "recent_matches": n_recent,
         "h2h_years": cfg["h2h_years"],
+        "h2h_scope": "all",
         "stats": [{"key": s["key"], "label": s["label"]} for s in stats_cfg],
         "leagues": [leagues_out[i] for i in order if i in leagues_out],
         "notes": notes,
